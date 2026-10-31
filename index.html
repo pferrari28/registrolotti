@@ -1360,10 +1360,11 @@ function aggiornaAnteprime(){
 function setStatus(text, cls){ const el = $('sync-status'); el.textContent = text; el.className = cls || ''; }
 let liveOk = false, loading = false, pendingLoad = false, loadT = null;
 
-async function fetchAll(table, orderCols){
+async function fetchAll(table, orderCols, filtro){
   const all = []; let from = 0; const step = 1000;
   while (true) {
     let q = sb.from(table).select('*');
+    if (filtro) q = filtro(q);
     orderCols.forEach(c => { q = q.order(c, { ascending: true }); });
     const { data, error } = await q.range(from, from + step - 1);
     if (error) throw error;
@@ -1373,25 +1374,72 @@ async function fetchAll(table, orderCols){
   }
   return all;
 }
-async function loadData(){
+// ---------- sincronizzazione: si scarica tutto solo all'apertura (e con «Aggiorna» o ogni 2 ore);
+// poi ogni 20 s si legge solo il numero di versione e, se è cambiato, si scaricano solo le righe nuove o modificate ----------
+const SYNC = { ok: false, rev: null, da: null, ultimoTutto: 0, mappaL: new Map(), mappaI: new Map() };
+const MARGINE_MS = 3 * 60 * 1000;                  // si rilegge un piccolo margine all'indietro per non perdere niente
+const TUTTO_OGNI_MS = 2 * 60 * 60 * 1000;
+const tsMeno = (ts, ms) => new Date(new Date(ts).getTime() - ms).toISOString();
+function maxTs(a, b){ return !a ? b : !b ? a : (new Date(a) > new Date(b) ? a : b); }
+async function caricaPiccole(){
+  const [c, v] = await Promise.all([fetchAll('impostazioni', ['chiave']), fetchAll('lotti_voci', ['tipo', 'valore'])]);
+  try { MEDIE = (await fetchAll('lotti_medie', ['ordine'])).sort((x, y) => Number(x.ordine) - Number(y.ordine)); } catch (e) { MEDIE = []; }
+  try { SERIE = await fetchAll('lotti_serie', ['anno']); } catch (e) { SERIE = []; }
+  if (isAdmin() || isQualita()) { try { VERIFICHE = {}; (await fetchAll('lotti_verifiche', ['lotto_id'])).forEach(r => { VERIFICHE[r.lotto_id + '|' + r.motivo] = r; }); VER_OK = true; } catch (e) { VERIFICHE = {}; VER_OK = false; } }
+  try { REGOLE = (await fetchAll('lotti_regole', ['ordine'])).sort((x, y) => Number(x.ordine) - Number(y.ordine)); } catch (e) { REGOLE = []; }
+  VOCI = { fornitore: [], prodotto: [] };
+  v.forEach(x => { if (VOCI[x.tipo]) VOCI[x.tipo].push(x.valore); });
+  Object.values(VOCI).forEach(a => a.sort((x, y) => x.localeCompare(y, 'it', { sensitivity: 'base' })));
+  c.forEach(r => { CONFIG[r.chiave] = r.valore; });
+  return CONFIG.rev || null;
+}
+function ricostruisci(){
+  const tutti = [...SYNC.mappaL.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || String(a.id).localeCompare(String(b.id)));
+  LOTTI = tutti.filter(x => !x.eliminato_il); CESTINO = tutti.filter(x => x.eliminato_il);
+  INGRESSI = [...SYNC.mappaI.values()].filter(x => SYNC.mappaL.has(x.lotto_id)).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  INGR_BY = {};
+  INGRESSI.forEach(x => { (INGR_BY[x.lotto_id] = INGR_BY[x.lotto_id] || []).push(x); });
+  Object.values(INGR_BY).forEach(a => a.sort((x, y) => (x.data_arrivo + x.created_at).localeCompare(y.data_arrivo + y.created_at)));
+}
+async function caricaTutto(){
+  const [l, i] = await Promise.all([fetchAll('lotti', ['created_at', 'id']), fetchAll('ingressi', ['created_at', 'id'])]);
+  const rev = await caricaPiccole();
+  SYNC.mappaL = new Map(l.map(x => [x.id, x])); SYNC.mappaI = new Map(i.map(x => [x.id, x]));
+  // la sincronizzazione «solo novità» funziona dopo lo script SQL (colonna modificato_il e tabella lotti_cancellati)
+  let ok = true, da = null;
+  try { const { error } = await sb.from('lotti_cancellati').select('id').limit(1); if (error) ok = false; } catch (e) { ok = false; }
+  if (ok && l.length && !('modificato_il' in l[0])) ok = false;
+  if (ok) { l.concat(i).forEach(x => { da = maxTs(da, x.modificato_il); }); da = da || new Date().toISOString(); }
+  Object.assign(SYNC, { ok, rev, da, ultimoTutto: Date.now() });
+  ricostruisci();
+}
+async function caricaNovita(){
+  const { data: c, error } = await sb.from('impostazioni').select('chiave,valore').eq('chiave', 'rev');
+  if (error) throw error;
+  const rev = (c && c[0] && c[0].valore) || null;
+  if (rev && rev === SYNC.rev) return false;               // niente di nuovo: nessun altro dato scaricato
+  const da = tsMeno(SYNC.da, MARGINE_MS), fil = q => q.gte('modificato_il', da);
+  const [l, i, del] = await Promise.all([
+    fetchAll('lotti', ['modificato_il', 'id'], fil), fetchAll('ingressi', ['modificato_il', 'id'], fil),
+    fetchAll('lotti_cancellati', ['id'], q => q.gte('il', da))]);
+  let nuovoDa = SYNC.da;
+  // prima le cancellazioni (anche «spostato nel cestino»), poi le righe nuove o modificate: chi può ancora vedere il lotto lo ritrova
+  del.forEach(x => { if (x.tabella === 'lotti') SYNC.mappaL.delete(x.rec_id); else SYNC.mappaI.delete(x.rec_id); nuovoDa = maxTs(nuovoDa, x.il); });
+  l.forEach(x => { SYNC.mappaL.set(x.id, x); nuovoDa = maxTs(nuovoDa, x.modificato_il); });
+  i.forEach(x => { SYNC.mappaI.set(x.id, x); nuovoDa = maxTs(nuovoDa, x.modificato_il); });
+  await caricaPiccole();
+  SYNC.rev = rev; SYNC.da = nuovoDa;
+  ricostruisci();
+  return true;
+}
+async function loadData(tutto){
   if (!sb) return false;
   if (loading) { pendingLoad = true; return false; }
   loading = true;
   try {
-    const [l, i, c, v] = await Promise.all([fetchAll('lotti', ['created_at', 'id']), fetchAll('ingressi', ['created_at', 'id']), fetchAll('impostazioni', ['chiave']), fetchAll('lotti_voci', ['tipo', 'valore'])]);
-    try { MEDIE = (await fetchAll('lotti_medie', ['ordine'])).sort((x, y) => Number(x.ordine) - Number(y.ordine)); } catch (e) { MEDIE = []; }
-    try { SERIE = await fetchAll('lotti_serie', ['anno']); } catch (e) { SERIE = []; }
-    if (isAdmin() || isQualita()) { try { VERIFICHE = {}; (await fetchAll('lotti_verifiche', ['lotto_id'])).forEach(r => { VERIFICHE[r.lotto_id + '|' + r.motivo] = r; }); VER_OK = true; } catch (e) { VERIFICHE = {}; VER_OK = false; } }
-    try { REGOLE = (await fetchAll('lotti_regole', ['ordine'])).sort((x, y) => Number(x.ordine) - Number(y.ordine)); } catch (e) { REGOLE = []; }
-    VOCI = { fornitore: [], prodotto: [] };
-    v.forEach(x => { if (VOCI[x.tipo]) VOCI[x.tipo].push(x.valore); });
-    Object.values(VOCI).forEach(a => a.sort((x, y) => x.localeCompare(y, 'it', { sensitivity: 'base' })));
-    LOTTI = l.filter(x => !x.eliminato_il); CESTINO = l.filter(x => x.eliminato_il); INGRESSI = i;
-    c.forEach(r => { CONFIG[r.chiave] = r.valore; });
-    INGR_BY = {};
-    INGRESSI.forEach(x => { (INGR_BY[x.lotto_id] = INGR_BY[x.lotto_id] || []).push(x); });
-    Object.values(INGR_BY).forEach(a => a.sort((x, y) => (x.data_arrivo + x.created_at).localeCompare(y.data_arrivo + y.created_at)));
-    refreshAll();
+    const completo = tutto === true || !SYNC.ok || !SYNC.da || Date.now() - SYNC.ultimoTutto > TUTTO_OGNI_MS;
+    const cambiato = completo ? (await caricaTutto(), true) : await caricaNovita();
+    if (cambiato) refreshAll();
     paintStatus();
     return true;
   } catch (e) {
@@ -1414,7 +1462,7 @@ function setupRealtime(){
   try {
     if (rtChannel) sb.removeChannel(rtChannel);
     rtChannel = sb.channel('lotti-live');
-    ['lotti', 'ingressi', 'impostazioni'].forEach(t => rtChannel.on('postgres_changes', { event: '*', schema: 'public', table: t }, scheduleLoad));
+    rtChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'impostazioni' }, scheduleLoad);   // ogni salvataggio aggiorna il numero di versione
     rtChannel.subscribe(st => { liveOk = (st === 'SUBSCRIBED'); paintStatus(); if (liveOk) scheduleLoad(); });
   } catch (e) { liveOk = false; }
 }
@@ -1453,7 +1501,7 @@ $('btn-esci').addEventListener('click', async () => {
   document.body.classList.remove('is-admin'); closeModal(); location.hash = '#carico';
   refreshAll(); paintUser(); paintPostazione(); setStatus('Non connesso'); showLogin();
 });
-$('btn-aggiorna').addEventListener('click', loadData);
+$('btn-aggiorna').addEventListener('click', () => loadData(true));
 // primo accesso: l'utente sceglie la sua password definitiva
 function scegliPassword(){
   return new Promise(res => {
@@ -2610,7 +2658,7 @@ $('bk-import').addEventListener('click', () => {
   if (modo === 'aggiungi') {
     confirmModal('Aggiungere i lotti mancanti?', 'Verranno aggiunti solo i lotti che nel registro non ci sono. Quelli già presenti non vengono toccati.', 'Importa', async () => {
       const r = await rpc('admin_importa_dati', { p: BK, p_modo: 'aggiungi' });
-      await loadData(); fineImport(r);
+      await loadData(true); fineImport(r);
     });
     return;
   }
@@ -2626,7 +2674,7 @@ $('bk-import').addEventListener('click', () => {
     try {
       await esportaDati('registro-lotti-prima-di-sostituire-' + oggiISO() + '.json');
       const r = await rpc('admin_importa_dati', { p: BK, p_modo: 'sostituisci' });
-      closeModal(); await loadData(); fineImport(r);
+      closeModal(); await loadData(true); fineImport(r);
     } catch (e) { $('bk-conf-msg').textContent = e.message; $('bk-conf-ok').disabled = false; }
   };
 });
