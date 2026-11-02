@@ -304,6 +304,12 @@ body.wide #view-registro .page-title{margin-bottom:10px;}
 .login-card h2{margin:0 0 6px;font-size:1.2rem;}
 .login-card p{margin:0 0 16px;color:var(--muted);font-size:.85rem;}
 .login-card.wide{max-width:460px;}
+.pw-wrap{position:relative;}
+.pw-wrap input{padding-right:44px;}
+.pw-eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:36px;height:32px;display:flex;align-items:center;justify-content:center;border:0;background:none;color:var(--muted);cursor:pointer;border-radius:6px;padding:0;}
+.pw-eye:hover{color:var(--ink);background:var(--head);}
+.pw-eye .pw-slash{display:none;}
+.pw-eye.on{color:var(--link);} .pw-eye.on .pw-slash{display:inline;}
 .choice{display:flex;gap:12px;margin-top:6px;}
 .choice button{flex:1;padding:22px 10px;font-size:1.05rem;font-weight:700;border-radius:8px;border:2px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;font-family:inherit;}
 .choice button:hover{border-color:var(--amber);background:var(--head);}
@@ -466,7 +472,7 @@ body.mob-paolo #reg-count{font-size:.85rem;margin:10px 2px;}
       <button type="button" data-u="admin">Paolo</button>
     </div>
     <label for="login-pw">Password</label>
-    <input type="password" id="login-pw" autocomplete="current-password" required>
+    <div class="pw-wrap"><input type="password" id="login-pw" autocomplete="current-password" required><button type="button" class="pw-eye" id="login-pw-eye" tabindex="-1" title="Mostra la password" aria-label="Mostra la password"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><line class="pw-slash" x1="3" y1="3" x2="21" y2="21"/></svg></button></div>
     <button class="btn" type="submit" style="width:100%">Accedi</button>
     <div class="msg err" id="login-msg"></div>
   </form>
@@ -1489,7 +1495,13 @@ document.querySelectorAll('#login-users button').forEach(b => b.addEventListener
   paintLoginUser(); $('login-msg').textContent = ''; $('login-pw').focus();
 }));
 paintLoginUser();
-function showLogin(m){ $('login-overlay').classList.add('show'); $('login-msg').textContent = m || ''; paintLoginUser(); }
+function showLogin(m){ $('login-overlay').classList.add('show'); $('login-msg').textContent = m || ''; mostraPw(false); paintLoginUser(); }
+function mostraPw(on){                         // occhio: mostra / nasconde la password scritta
+  const i = $('login-pw'), b = $('login-pw-eye'); if (!i || !b) return;
+  i.type = on ? 'text' : 'password'; b.classList.toggle('on', on);
+  b.title = b.ariaLabel = on ? 'Nascondi la password' : 'Mostra la password';
+}
+$('login-pw-eye').addEventListener('click', () => { const pos = $('login-pw').selectionStart; mostraPw($('login-pw').type === 'password'); $('login-pw').focus(); try { $('login-pw').setSelectionRange(pos, pos); } catch (e) {} });
 function hideLogin(){ $('login-overlay').classList.remove('show'); }
 $('login-form').addEventListener('submit', async ev => {
   ev.preventDefault();
