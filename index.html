@@ -114,6 +114,9 @@ input:disabled,select:disabled{opacity:.55;}
 .prod-head .lf-del{flex:none;width:34px;height:30px;}
 .prod-add{margin:14px 0 0;}
 .prod-extra .mediabox{grid-column:auto;}
+.prod-extra .notebox{grid-column:auto;}
+.stesso-chk-lbl{display:flex;gap:10px;align-items:center;cursor:pointer;font-weight:600;font-size:.95rem;color:var(--ink);margin-bottom:0;}
+.stesso-chk-lbl input{width:20px;height:20px;margin:0;}
 .modal.ask{z-index:115;align-items:center;}
 .arch-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
 .arch-card{display:block;text-align:left;border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;background:var(--panel);color:var(--ink);cursor:pointer;font:inherit;text-decoration:none;}
@@ -959,7 +962,7 @@ function regolaDi(prodotto){
 // lotto fornitore: sempre per TRENTIN; per i prodotti in elenco decide la casella; per gli altri è obbligatorio solo in Spedizioni
 function lfObbligatorio(forn, prod){ if (isTrentin(forn)) return true; const r = regolaDi(prod); return r ? !!r.lf_obbl : postazione() === 'SPEDIZIONI'; }
 function erroreLf(forn){ return isTrentin(forn) ? 'Fornitore TRENTIN: indica il lotto del fornitore.' : 'Per questo prodotto indica il lotto del fornitore.'; }
-function aggiornaNote(){ const b = $('c-notebox'); if (b) b.hidden = postazione() !== 'STAGIONATURA'; }
+function aggiornaNote(){ const h = postazione() !== 'STAGIONATURA'; document.querySelectorAll('#c-notebox, .prod-extra .notebox').forEach(b => { b.hidden = h; }); }
 // matricola: obbligatoria solo in Stagionatura, tranne per sbiancato, gran bon, retinato, formaggio duro
 const MAT_ESENTI = /SBIANCATO|GRAN BON|GRANBON|RETINATO|FORMAGGIO DURO/i;
 // matricola Grana Padano: provincia (2 lettere) + spazio + numero, es. CR 101
@@ -1108,8 +1111,8 @@ function lottoFields(p, opts = {}){
     <div><label>Integrità imballo / prodotto / bancali</label><select class="esito" id="${p}-integrita">${esitoOpts}</select></div>
     <div><label>Addetto (sigla o nome) *</label><input class="uc" id="${p}-addetto" maxlength="40" autocomplete="off"></div>
     <div class="lotbox"><label>Nr. Lotto Trentin (assegnato)</label><input id="${p}-lotto" readonly tabindex="-1"><small id="${p}-lotto-note"></small></div>
-    ${p === 'c' ? '<div class="notebox" id="c-notebox" hidden><label>Note</label><input id="c-note" maxlength="120" autocomplete="off"><small>&nbsp;</small></div>' : ''}
-    ${p === 'e' ? '<div class="notebox" id="e-notebox" hidden><label>Note</label><input id="e-note" maxlength="120" autocomplete="off"></div>' : ''}
+    ${p === 'c' ? '<div class="notebox" id="c-notebox" hidden><label>Note</label><input class="uc" id="c-note" maxlength="120" autocomplete="off"><small>&nbsp;</small></div>' : ''}
+    ${p === 'e' ? '<div class="notebox" id="e-notebox" hidden><label>Note</label><input class="uc" id="e-note" maxlength="120" autocomplete="off"></div>' : ''}
     ${p === 'c' ? '<div class="mediabox"><label>Media peso prodotto</label><input id="c-media" readonly tabindex="-1" placeholder="kg ÷ forme"><small id="c-media-note"></small></div>' : ''}
   </div>${p === 'c' ? '<div id="c-extra"></div><button type="button" class="print-btn prod-add" data-act="prod-add">+ Aggiungi un\'altra produzione a questo DDT</button>' : ''}`;
 }
@@ -1308,6 +1311,7 @@ function addProduzione(){
   const d = document.createElement('div'); d.className = 'prod-extra'; d.dataset.p = p;
   d.innerHTML = `<div class="prod-head"><span>Produzione <span class="prod-num"></span></span><button type="button" class="lf-del" data-act="prod-del" title="Rimuovi questa produzione">−</button></div>
     <div class="grid">
+      <div class="s4"><label class="stesso-chk-lbl"><input type="checkbox" class="stesso-chk" id="${p}-stesso" data-p="${p}"> Stesso prodotto e matricola del carico sopra</label></div>
       <div class="s2"><label>Prodotto <span class="dim">(se diverso da quello sopra)</span></label><div class="combo"><input class="uc" id="${p}-prodotto" data-combo="prodotto" autocomplete="off" placeholder="stesso prodotto di sopra"><button type="button" class="combo-btn" tabindex="-1" data-combo-btn="${p}-prodotto" title="Mostra l'elenco dei prodotti">▾</button></div></div>
       <div><label>Matricola${matReq(p)}</label><input class="uc" id="${p}-matricola" autocomplete="off"><div class="field-err" id="${p}-matricola-err" hidden></div></div>
       <div><label>Mese/anno produzione<span class="prod-req"> *</span></label><input id="${p}-produzione" autocomplete="off" placeholder="es. 0126, 10/25 o ott-25"><div class="field-err" id="${p}-produzione-err" hidden></div></div>
@@ -1316,6 +1320,7 @@ function addProduzione(){
       <div><label>${KG_LABEL}</label>${kgInput(p + '-kg')}</div>
       <div><label>Quantità *</label><input id="${p}-qta" inputmode="numeric" autocomplete="off"></div>
       <div class="s4 lf-extra" id="${p}-lf-extra" hidden></div>
+      <div class="notebox" id="${p}-notebox"${postazione() !== 'STAGIONATURA' ? ' hidden' : ''}><label>Note</label><input class="uc" id="${p}-note" maxlength="120" autocomplete="off"></div>
       <div class="mediabox"><label>Media peso prodotto</label><input id="${p}-media" readonly tabindex="-1" placeholder="kg ÷ forme"><small id="${p}-media-note"></small></div>
     </div>`;
   box.appendChild(d); numeraProduzioni(); aggiornaLfReq(); $(p + '-matricola').focus();
@@ -1333,7 +1338,8 @@ function leggiExtraCampi(p){
   if (!kg || kg <= 0) throw new Error('Indica i kg.');
   if (!qta || qta <= 0) throw new Error('Indica la quantità (forme / cartoni / pezzi).');
   if (!Number.isInteger(qta)) throw new Error('La quantità deve essere un numero intero.');
-  return { prodotto: prodEff(p), lotto_fornitore: lfVal(p), matricola: matVal(p), produzione: normMese(val(p + '-produzione')) || '', scadenza: scadVal(p), qta_kg: kg, qta: qta };
+  return { prodotto: prodEff(p), lotto_fornitore: lfVal(p), matricola: matVal(p), produzione: normMese(val(p + '-produzione')) || '', scadenza: scadVal(p), qta_kg: kg, qta: qta,
+    note: ($(p + '-notebox') && !$(p + '-notebox').hidden) ? val(p + '-note') : undefined };
 }
 function leggiLotti(){
   const base = leggiLotto('c'), lista = [base];
@@ -1876,6 +1882,13 @@ document.addEventListener('paste', e => {
   t.setRangeText(v.replace(/\./g, ''), t.selectionStart, t.selectionEnd, 'end'); fmtMigliaia(t);
 });
 document.addEventListener('change', e => { if (e.target.classList && e.target.classList.contains('esito')) segnaEsiti(); });
+document.addEventListener('change', e => {
+  const t = e.target; if (!(t.classList && t.classList.contains('stesso-chk'))) return;
+  const p = t.dataset.p;
+  if (t.checked) { setV(p + '-prodotto', val('c-prodotto')); setV(p + '-matricola', val('c-matricola')); }
+  else { setV(p + '-prodotto', ''); setV(p + '-matricola', ''); }
+  controllaMatricola(p); aggiornaLfReq(); aggiornaAnteprime();
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { if ($('ask').classList.contains('show')) { $('ask-no').click(); return; } if ($('success').classList.contains('show')) { if (!SUCCESS_FISSO) chiudiSuccesso(); } else if ($('modal').classList.contains('show')) closeModal(); else if ($('pmodal').classList.contains('show')) chiudiPartita(); } });
 $('q-search').addEventListener('input', e => { REG.q = e.target.value.trim(); renderRegistro(); });
 $('r-da').addEventListener('change', e => { REG.da = parseDataIt(e.target.value) || ''; renderRegistro(); });
