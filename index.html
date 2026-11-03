@@ -1912,6 +1912,33 @@ $('btn-reset-filtri').addEventListener('click', () => {
 $('f-search').addEventListener('input', renderFraz);
 
 // ---------- carico normale ----------
+// ---------- rientro da Trentin di un nostro lotto (es. 26P1234 scritto come lotto fornitore) ----------
+const RE_LOTTO_P = /^(\d{2})P(\d+)$/;
+const normMatr = v => String(v || '').toUpperCase().replace(/\s+/g, '');
+function controlloRientri(lista){
+  if (!isTrentin(val('c-fornitore'))) return [];
+  const anniDb = LOTTI.filter(l => l.progressivo != null).map(l => Number(l.anno)).concat(SERIE.map(s => Number(s.anno)));
+  const primoAnno = anniDb.length ? Math.min(...anniDb) : annoEff();
+  const avvisi = [];
+  lista.forEach((r, i) => {
+    String(r.lotto_fornitore || '').split(' / ').map(x => x.trim().toUpperCase().replace(/\s+/g, '')).forEach(cod => {
+      const m = cod.match(RE_LOTTO_P); if (!m) return;
+      const anno = Number(m[1]), prog = Number(m[2]), pre = lista.length > 1 ? `Produzione ${i + 1}: ` : '', Il = pre ? 'il' : 'Il';
+      const orig = LOTTI.find(l => l.progressivo != null && Number(l.anno) === anno && Number(l.progressivo) === prog);
+      if (!orig) {
+        const cart = anno < primoAnno || prog < inizioDi(anno);
+        const ces = (CESTINO || []).some(l => l.progressivo != null && Number(l.anno) === anno && Number(l.progressivo) === prog);
+        avvisi.push(`${pre}${Il} lotto <b>${cod}</b> non risulta nel registro${ces ? ' (è nel Cestino, eliminato)' : cart ? ' digitale: è precedente al 2 novembre 2026, controllalo sul registro cartaceo' : ''}.`);
+        return;
+      }
+      const diff = [];
+      if (r.matricola && orig.matricola && normMatr(r.matricola) !== normMatr(orig.matricola)) diff.push(`matricola <b>${esc(r.matricola)}</b> invece di <b>${esc(orig.matricola)}</b>`);
+      if (r.produzione && orig.produzione && fmtMese(r.produzione) !== fmtMese(orig.produzione)) diff.push(`produzione <b>${esc(fmtMese(r.produzione))}</b> invece di <b>${esc(fmtMese(orig.produzione))}</b>`);
+      if (diff.length) avvisi.push(`${pre}${Il} lotto <b>${cod}</b> è nel registro (arrivo ${fmtData(orig.data_arrivo)}, ${esc(orig.prodotto)}), ma qui hai scritto ${diff.join(' e ')}.`);
+    });
+  });
+  return avvisi;
+}
 $('c-fields').innerHTML = lottoFields('c');
 resetLottoForm('c');
 $('c-form').addEventListener('submit', async ev => {
@@ -1919,6 +1946,8 @@ $('c-form').addEventListener('submit', async ev => {
   const msg = $('c-msg'), btn = $('c-submit'); msg.textContent = '';
   let lista; try { lista = leggiLotti(); } catch (e) { msg.textContent = e.message; return; }
   const previsto = $('c-lotto').value;
+  const rientri = controlloRientri(lista);
+  if (rientri.length && !(await chiediConferma('Controlla il lotto di rientro', `${rientri.join('<br><br>')}<br><br>Vuoi registrare comunque, oppure tornare indietro a controllare?`, 'Registra comunque', 'Torna indietro'))) return;
   const fuori = prodPrefissi().map((p, i) => { const f = controlloMedia(p); return f ? Object.assign(f, { nr: i + 1 }) : null; }).filter(Boolean);
   if (fuori.length) {
     const righe = fuori.map(f => `${lista.length > 1 ? `Produzione ${f.nr}: ` : ''}media peso <b>${fmtNum(f.media, 2)} kg</b>, fuori dall'intervallo previsto per <b>${esc(f.m.nome)}</b> (da ${fmtNum(Number(f.m.kg_min), 2)} a ${fmtNum(Number(f.m.kg_max), 2)} kg)`).join('<br>');
