@@ -921,6 +921,8 @@ function parseMese(v){
   let t = String(v || '').trim().toLowerCase();
   const dg = t.match(/^(\d{1,2})(\d{2}|\d{4})$/);       // senza separatore: 0126, 126, 012026 -> gen-26
   if (dg && (t.length === 3 || t.length === 4 || t.length === 6)) t = dg[1] + '/' + dg[2];
+  const lt = t.match(/^([a-zà-ù]+)(\d{2}|\d{4})$/);     // mese in lettere attaccato: gen25, gennaio2025 -> gen-25
+  if (lt) t = lt[1] + '/' + lt[2];
   const m = t.match(/^([a-zà-ù]+|\d{1,2})\s*[\/\-.\s]\s*(\d{4}|\d{2})$/);
   if (!m) return null;
   let mo;
