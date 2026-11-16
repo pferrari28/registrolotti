@@ -158,13 +158,6 @@ input[id$="-qta"],input[id$="-forme"]{font-weight:700;}
 .grid > div.lf-extra{flex-direction:row;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-start;}
 .lf-extra::before{content:'Altri lotti fornitore';font-size:.8rem;color:var(--muted);width:100%;}
 .lf-row{display:flex;gap:6px;width:230px;}
-.lf-row input,.lf-row input[readonly]{cursor:pointer;background:var(--panel);font-weight:400;color:inherit;}
-.lf-chip{background:var(--head);border:1px solid var(--line);border-radius:14px;padding:3px 11px;font-weight:600;font-size:.88rem;}
-.lfp-sub{margin:0 0 10px;color:var(--muted);font-size:.85rem;}
-.lfp-list{max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px;padding-right:4px;}
-.lfp-row{display:flex;gap:8px;align-items:center;}
-.lfp-n{flex:0 0 22px;text-align:right;color:var(--muted);font-size:.85rem;}
-.lfp-row input{flex:1;min-width:0;}
 .mini-btn{background:none;border:1px solid var(--line);border-radius:4px;color:var(--link);font:inherit;font-size:.75rem;font-weight:600;padding:2px 8px;cursor:pointer;margin-right:6px;white-space:nowrap;}
 .mini-btn:hover{border-color:var(--link);background:var(--head);}
 .mat-req,.scad-req{display:none;}
@@ -1199,31 +1192,11 @@ function lfVal(p){
   return ins.map(i => i.value.trim()).filter(Boolean).join(' / ');
 }
 function addLf(p, v){
-  const box = $(p + '-lf-extra'); if (!box || !v) return;
+  const box = $(p + '-lf-extra'); if (!box) return;
   const d = document.createElement('div'); d.className = 'lf-row';
-  d.innerHTML = '<input class="uc lf-in" readonly data-act="lf-add" data-p="' + p + '" title="Clicca per modificare">';
-  d.querySelector('input').value = v; box.appendChild(d); box.hidden = false;
-}
-let LF_RIGHE = 10;
-function lfPopupRiga(n, v){
-  return `<div class="lfp-row"><span class="lfp-n">${n}</span><input class="uc lfp-in" autocomplete="off" value="${esc(v || '')}" placeholder="lotto fornitore"></div>`;
-}
-function openLfPopup(p){
-  const vals = [($(p + '-lf') || {}).value || '', ...[...document.querySelectorAll('#' + p + '-lf-extra .lf-in')].map(i => i.value)].map(x => x.trim()).filter(Boolean);
-  const n = Math.max(LF_RIGHE, vals.length);
-  let h = '<h2>Lotti fornitore</h2><div class="lfp-list" id="lfp-list">';
-  for (let i = 0; i < n; i++) h += lfPopupRiga(i + 1, vals[i]);
-  h += '</div><button type="button" class="btn ghost sm" id="lfp-more">+ Aggiungi altre righe</button>' +
-    '<div class="modal-btns"><button class="btn sm" id="lfp-ok">Conferma</button><button class="btn ghost sm" id="lfp-no">Annulla</button></div>';
-  openModal(h, true);
-  const list = $('lfp-list');
-  $('lfp-more').onclick = () => { const k = list.children.length; list.insertAdjacentHTML('beforeend', [1,2,3,4,5].map(j => lfPopupRiga(k + j, '')).join('')); list.lastElementChild.querySelector('input').focus(); list.scrollTop = list.scrollHeight; };
-  $('lfp-no').onclick = closeModal;
-  $('lfp-ok').onclick = () => {
-    const v = [...list.querySelectorAll('.lfp-in')].map(i => i.value.trim()).filter(Boolean);
-    setLf(p, v.join(' / ')); closeModal(); aggiornaAnteprime();
-  };
-  list.querySelector('input').focus();
+  d.innerHTML = '<input class="uc lf-in" autocomplete="off" placeholder="altro lotto fornitore"><button type="button" class="lf-del" data-act="lf-del" title="Rimuovi">−</button>';
+  d.querySelector('input').value = v || ''; box.appendChild(d); box.hidden = false;
+  if (!v) d.querySelector('input').focus();
 }
 function setLf(p, v){
   const parts = String(v || '').split(' / ').map(x => x.trim()).filter(Boolean);
@@ -1906,7 +1879,7 @@ document.addEventListener('click', e => {
     case 'media-add': return mediaModal(null);
     case 'media-edit': return mediaModal(MEDIE.find(m => m.chiave === id));
     case 'media-del': return mediaElimina(id);
-    case 'lf-add': return openLfPopup(b.dataset.p);
+    case 'lf-add': return addLf(b.dataset.p);
     case 'lf-del': { const box = b.closest('.lf-extra'); b.closest('.lf-row').remove(); if (box && !box.children.length) box.hidden = true; return aggiornaAnteprime(); }
     case 'print-partita': return stampaPartita(id);
     case 'edit-ingresso': return editIngresso(id);
