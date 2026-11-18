@@ -90,6 +90,7 @@ input,select{
   width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;
   background:var(--panel);color:var(--ink);font-size:.95rem;font-family:inherit;
 }
+input.manca{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger);}
 input:focus,select:focus{outline:2px solid var(--link);outline-offset:1px;}
 input[readonly]{background:var(--head);font-weight:700;color:var(--link);}
 input:disabled,select:disabled{opacity:.55;}
@@ -1000,9 +1001,24 @@ function aggiornaLfReq(){
     const { forn, prod } = ctxBlocco(m[1]);
     e.classList.toggle('on', m[2] === 'lf' ? lfObbligatorio(forn, prod) : m[2] === 'mat' ? matObbligatoria(prod) : scadObbligatoria(forn, prod));
   });
-  aggiornaNote();
+  aggiornaNote(); segnaMancanti();
 }
-document.addEventListener('input', ev => { if (ev.target && /-(fornitore|prodotto)$/.test(ev.target.id || '')) aggiornaLfReq(); });
+// Celle obbligatorie ancora vuote: bordo rosso, ma solo dopo che si è iniziato a compilare
+// (fornitore, DDT o prodotto già scritti). Il form vuoto resta pulito.
+function segnaMancanti(){
+  const vista = $('view-carico'); if (!vista) return;
+  const iniziato = ['c-fornitore', 'c-ddt', 'c-prodotto'].some(id => val(id));
+  vista.querySelectorAll('.grid > div').forEach(d => {
+    const lab = d.querySelector(':scope > label'); if (!lab) return;
+    const inp = d.querySelector('input:not([type=hidden]):not([readonly]), select'); if (!inp) return;
+    const sp = lab.querySelector('.lf-req,.mat-req,.scad-req,.prod-req');
+    const obbl = sp ? getComputedStyle(sp).display !== 'none' : lab.textContent.includes('*');
+    const manca = iniziato && obbl && inp.tagName !== 'SELECT' && !inp.value.trim();
+    inp.classList.toggle('manca', manca);
+  });
+}
+document.addEventListener('input', ev => { if (ev.target && /-(fornitore|prodotto)$/.test(ev.target.id || '')) aggiornaLfReq(); else segnaMancanti(); });
+document.addEventListener('change', () => segnaMancanti());
 function postazione(){
   if (ME && !sceglieMag() && ME.magazzino) return ME.magazzino;      // Stagionatura / Spedizioni: il magazzino è quello dell'utente
   try { return localStorage.getItem('lotti_postazione') || ''; } catch (e) { return ''; }   // admin: sceglie lui
@@ -2032,6 +2048,8 @@ async function decidiFrazionati(lista){
 }
 $('c-fields').innerHTML = lottoFields('c');
 resetLottoForm('c');
+// Il lotto si registra solo cliccando "Registra lotto": l'Invio nei campi non conferma
+$('c-form').addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.tagName !== 'BUTTON' && ev.target.tagName !== 'TEXTAREA') ev.preventDefault(); });
 $('c-form').addEventListener('submit', async ev => {
   ev.preventDefault();
   const msg = $('c-msg'), btn = $('c-submit'); msg.textContent = '';
