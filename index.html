@@ -1006,15 +1006,21 @@ function aggiornaLfReq(){
 // Celle obbligatorie ancora vuote: bordo rosso, ma solo dopo che si è iniziato a compilare
 // (fornitore, DDT o prodotto già scritti). Il form vuoto resta pulito.
 function segnaMancanti(){
-  const vista = $('view-carico'); if (!vista) return;
-  const iniziato = ['c-fornitore', 'c-ddt', 'c-prodotto'].some(id => val(id));
-  vista.querySelectorAll('.grid > div').forEach(d => {
-    const lab = d.querySelector(':scope > label'); if (!lab) return;
-    const inp = d.querySelector('input:not([type=hidden]):not([readonly]), select'); if (!inp) return;
-    const sp = lab.querySelector('.lf-req,.mat-req,.scad-req,.prod-req');
-    const obbl = sp ? getComputedStyle(sp).display !== 'none' : lab.textContent.includes('*');
-    const manca = iniziato && obbl && inp.tagName !== 'SELECT' && !inp.value.trim();
-    inp.classList.toggle('manca', manca);
+  // Carico: si parte da fornitore/DDT/prodotto. Consegne frazionate e partite: si parte dal primo dato scritto nel blocco.
+  const grids = new Set(document.querySelectorAll('#view-carico .grid, form[id$="-form"] .grid'));
+  grids.forEach(g => {
+    const inCarico = !!g.closest('#view-carico');
+    const avvio = inCarico ? ['c-fornitore', 'c-ddt', 'c-prodotto']
+      : [...g.querySelectorAll('input')].map(i => i.id).filter(id => /-(fornitore|prodotto|ddt|kg|forme|temp|addetto)$/.test(id));
+    const iniziato = avvio.some(id => val(id));
+    g.querySelectorAll(':scope > div').forEach(d => {
+      const lab = d.querySelector(':scope > label'); if (!lab) return;
+      const inp = d.querySelector('input:not([type=hidden]):not([readonly]), select'); if (!inp) return;
+      const sp = lab.querySelector('.lf-req,.mat-req,.scad-req,.prod-req');
+      const obbl = sp ? getComputedStyle(sp).display !== 'none' : lab.textContent.includes('*');
+      const manca = iniziato && obbl && inp.tagName !== 'SELECT' && !inp.value.trim();
+      inp.classList.toggle('manca', manca);
+    });
   });
 }
 document.addEventListener('input', ev => { if (ev.target && /-(fornitore|prodotto)$/.test(ev.target.id || '')) aggiornaLfReq(); else segnaMancanti(); });
