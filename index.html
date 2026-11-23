@@ -1855,6 +1855,7 @@ function renderDettaglio(){
     <div class="frz-actions">
       ${bloccato(l) ? LOCK + ' <span class="dim" style="font-size:.85rem">modifica ed eliminazione bloccate (più di 10 giorni dall\'ultimo ingresso)</span>' : `<button class="print-btn" data-act="edit-partita" data-id="${l.id}">✎ Modifica dati partita</button>`}
       <button class="print-btn" data-act="print-partita" data-id="${l.id}">🖨️ Stampa Mod. 120</button>
+      ${(ing.length === 1 && !bloccato(l)) ? `<button class="print-btn" data-act="single-partita" data-id="${l.id}" title="Con un solo ingresso: torna a lotto normale">↩ Rendi entrata singola</button>` : ''}
       ${bloccato(l) ? '' : `<button class="print-btn" data-act="del-partita" data-id="${l.id}" style="color:var(--danger)">🗑 Elimina partita</button>`}
     </div>
     <div class="table-wrap"><table>
@@ -1894,6 +1895,7 @@ document.addEventListener('click', e => {
     case 'sel-partita': return selPartita(id);
     case 'edit-partita': return editPartita(id);
     case 'del-partita': return delLotto(id);
+    case 'single-partita': return rendiSingola(id);
     case 'to-fraz': return convertiFraz(id);
     case 'ver-ok': return verOk(id, b.dataset.k);
     case 'ver-annulla': return verAnnulla(id, b.dataset.k);
@@ -2415,6 +2417,15 @@ function editLotto(id){
       toast('Modifiche salvate' + (r.lotto_trentin !== l.lotto_trentin ? ' · nuovo lotto ' + r.lotto_trentin : ''));
     } catch (e) { $('e-msg').textContent = 'Salvataggio non riuscito: ' + e.message; $('e-ok').disabled = false; }
   };
+}
+function rendiSingola(id){
+  const l = LOTTI.find(x => x.id === id); if (!l) return;
+  confirmModal('Rendere entrata singola?', `La partita <b>${esc(l.lotto_trentin)}</b> (${esc(l.fornitore)} · ${esc(l.prodotto)}) torna a essere un lotto normale con i dati dell'unico ingresso (DDT, kg, forme, nota).<br><span class="dim">Il numero di lotto non cambia. Se serve di nuovo, si può rifare frazionata con «+ Fraz.».</span>`, 'Rendi singola', async () => {
+    await rpc('rendi_entrata_singola', { p_id: id });
+    if (SEL_PARTITA === id) SEL_PARTITA = null;
+    await loadData();
+    toast(`Lotto ${l.lotto_trentin}: ora è un'entrata singola`);
+  });
 }
 function delLotto(id){
   const l = LOTTI.find(x => x.id === id); if (!l) return;
