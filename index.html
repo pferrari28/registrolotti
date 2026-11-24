@@ -1254,6 +1254,16 @@ function resetIngressoForm(p){
   aggiornaMedia();
 }
 
+// Grana Padano in Stagionatura: si carica solo dopo i 9 mesi completi di stagionatura
+// (produzione feb-26 -> registrabile dal 01/12/2026, cioè dal 1° del 10° mese dopo la produzione)
+function controllaStagionatura(p){
+  if (postazione() !== 'STAGIONATURA') return;
+  const prod = /^c-x\d+$/.test(p) ? prodEff(p) : val(p + '-prodotto');
+  if (!isPadano(prod)) return;
+  const m = parseMese(val(p + '-produzione')), d = val(p + '-data'); if (!m || !d) return;
+  const idx = m.mo - 1 + 10, da = (2000 + Number(m.yy) + Math.floor(idx / 12)) + '-' + String(idx % 12 + 1).padStart(2, '0') + '-01';
+  if (d < da) throw new Error('La merce non ha ancora 9 mesi di stagionatura. Registrabile dal ' + fmtData(da) + '.');
+}
 function leggiLotto(p){
   const kg = numKg(val(p + '-kg')), qta = num(val(p + '-qta')), temp = num(val(p + '-temp'));
   if (Number.isNaN(kg)) throw new Error('I kg non sono un numero valido.');
@@ -1266,6 +1276,7 @@ function leggiLotto(p){
   if (!val(p + '-matricola') && matObbligatoria(val(p + '-prodotto'))) throw new Error('Indica la matricola (obbligatoria per la Stagionatura).');
   if (!val(p + '-produzione') && postazione() !== 'SPEDIZIONI') throw new Error('Indica il mese/anno di produzione.');
   if (val(p + '-produzione') && !normMese(val(p + '-produzione'))) throw new Error(erroreMese(val(p + '-produzione')));
+  controllaStagionatura(p);
   if (!lfVal(p) && lfObbligatorio(val(p + '-fornitore'), val(p + '-prodotto'))) throw new Error(erroreLf(val(p + '-fornitore')));
   if (!scadVal(p) && scadObbligatoria(val(p + '-fornitore'), val(p + '-prodotto'))) throw new Error(erroreScad(val(p + '-fornitore')));
   if (!kg || kg <= 0) throw new Error('Indica i kg.');
