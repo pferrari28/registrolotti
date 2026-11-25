@@ -255,6 +255,15 @@ th.sortable .arrow{opacity:.35;margin-left:4px;font-size:.7em;}
 th.sortable.sort-asc .arrow,th.sortable.sort-desc .arrow{opacity:1;color:var(--link);}
 tbody tr:hover{background:var(--head);}
 td.wrap{white-space:normal;min-width:190px;}
+/* registro: Lotto, Data arrivo e Fornitore restano visibili scorrendo a destra */
+#reg-table th:nth-child(-n+3),#reg-table td:nth-child(-n+3){position:sticky;background:var(--panel);overflow:hidden;text-overflow:ellipsis;}
+#reg-table th:nth-child(-n+3){background:var(--head);z-index:4;}
+#reg-table td:nth-child(-n+3){z-index:1;}
+#reg-table th:nth-child(1),#reg-table td:nth-child(1){left:0;width:132px;min-width:132px;max-width:132px;}
+#reg-table th:nth-child(2),#reg-table td:nth-child(2){left:132px;width:116px;min-width:116px;max-width:116px;}
+#reg-table th:nth-child(3),#reg-table td:nth-child(3){left:248px;width:170px;min-width:170px;max-width:170px;box-shadow:3px 0 4px -2px rgba(0,0,0,.28);}
+#reg-tbody tr:hover td:nth-child(-n+3){background:var(--head);}
+
 td.num,th.num{text-align:right;}
 td.lot{font-weight:700;}
 td.act{text-align:right;white-space:nowrap;}
@@ -1705,7 +1714,7 @@ function celleLotto(l){
 
 function renderCarico(){
   const rec = [...LOTTI].sort((x, y) => y.created_at.localeCompare(x.created_at)).slice(0, 8);
-  $('recent-tbody').innerHTML = rec.length ? rec.map(l => `<tr>${celleLotto(l)}<td>${fmtData(l.data_arrivo)}</td><td>${esc(l.fornitore)}</td><td class="wrap">${esc(l.prodotto)}${extraProd(l)}</td>
+  $('recent-tbody').innerHTML = rec.length ? rec.map(l => `<tr>${celleLotto(l)}<td>${fmtData(l.data_arrivo)}</td><td title="${esc(l.fornitore)}">${esc(l.fornitore)}</td><td class="wrap">${esc(l.prodotto)}${extraProd(l)}</td>
     <td class="num">${fmtKg(l.qta_kg)}</td><td class="num">${fmtNum(l.qta, 0)} ${l.um}</td><td>${esc(l.addetto || '—')}</td><td class="act">${btnFraz(l)}</td></tr>`).join('')
     : '<tr class="empty-row"><td colspan="8">Nessun lotto registrato.</td></tr>';
 }
@@ -2468,7 +2477,7 @@ resetNuova();
 $('n-form').addEventListener('submit', async ev => {
   ev.preventDefault();
   const msg = $('n-msg'), btn = $('n-submit'); msg.textContent = '';
-  let p, i; try { p = leggiPartita('n'); i = leggiIngresso('n'); } catch (e) { msg.textContent = e.message; return; }
+  let p, i; try { p = leggiPartita('n'); i = leggiIngresso('n'); controllaStagionatura('n'); } catch (e) { msg.textContent = e.message; return; }
   if (!(await mediaOk('n'))) return;
   const previsto = $('n-lotto').value;
   await salvaPartita(p, i, previsto, btn);
@@ -2955,7 +2964,7 @@ function cambiaPwdUtente(email, nome){
 // ---------- il messaggio di errore sparisce appena il valore sbagliato viene corretto ----------
 const FORM_CHECK = {
   'c-form': () => leggiLotti(),
-  'n-form': () => { leggiPartita('n'); leggiIngresso('n'); },
+  'n-form': () => { leggiPartita('n'); leggiIngresso('n'); controllaStagionatura('n'); },
   'i-form': () => leggiIngresso('i'), 'x-form': () => leggiIngresso('x'), 'z-form': () => leggiIngresso('z'),
   'e-form': () => (EDIT_LOTTO && EDIT_LOTTO.frazionata) ? leggiPartita('e') : leggiLotto('e')
 };
