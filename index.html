@@ -382,6 +382,9 @@ body.wide #view-registro .page-title{margin-bottom:10px;}
   #print-area tr{break-inside:avoid;}
   #print-area .p-foot{margin-top:6px;font-size:7.5pt;color:#444;display:flex;justify-content:space-between;}
   #print-area .p-meta{margin:6px 0;font-size:8.5pt;}
+  #print-area .pc-big{font-size:68pt;font-weight:800;text-align:center;letter-spacing:.03em;margin:30mm 0 18mm;}
+  #print-area .pc-tab{width:100%;font-size:14pt;} #print-area .pc-tab th{width:38%;text-align:left;background:#EDEDED;font-size:12pt;padding:7px 10px;} #print-area .pc-tab td{padding:7px 10px;font-weight:700;}
+  #print-area .pc-meta{margin:14mm 0 8mm;} #print-area .pc-multi{font-size:11pt;} #print-area .pc-multi td.pc-lot{font-size:15pt;font-weight:800;} #print-area .pc-multi td.r{text-align:right;}
   #print-area .p-hdr120 td{font-size:10pt;padding:6px 8px;}
 }
 /* storico modifiche / da verificare / riepilogo fornitori */
@@ -1052,7 +1055,11 @@ function toast(msg, err){
 }
 
 let successT;
-function successo({ titolo, grande, dettaglio, avviso, righe, fisso }){
+let SUCCESSO_STAMPA = null;
+const mediaLotto = l => (l && l.um === 'f' && Number(l.qta) > 0 && Number(l.qta_kg) > 0) ? Number(l.qta_kg) / Number(l.qta) : null;
+const testoMedia = l => { const m = mediaLotto(l); return m === null ? '' : `media peso ${fmtIT(m, 2, 2)} kg`; };
+function successo({ titolo, grande, dettaglio, avviso, righe, fisso, stampa }){
+  SUCCESSO_STAMPA = stampa || null;
   $('success-title').textContent = titolo;
   $('success-big').textContent = grande || '';
   $('success-detail').textContent = dettaglio || '';
@@ -1062,7 +1069,7 @@ function successo({ titolo, grande, dettaglio, avviso, righe, fisso }){
   const prodMulti = new Set((righe || []).map(l => l.prodotto)).size > 1;
   sl.innerHTML = (righe || []).map(l => `<div class="succ-row"><b class="cod">${esc(l.lotto_trentin)}</b>
     <span class="sx">${prodMulti ? esc(l.prodotto) + ' · ' : ''}Produzione: ${esc(l.produzione ? fmtMese(l.produzione) : '—')}${l.matricola ? ' · matr. ' + esc(l.matricola) : ''}${l.scadenza ? ' · scad. ' + fmtScad(l.scadenza) : ''}</span>
-    <span class="fm">${fmtNum(l.qta, 0)} ${esc(UM[l.um] || l.um)} · ${fmtKg(l.qta_kg)} kg</span></div>`).join('');
+    <span class="fm">${fmtNum(l.qta, 0)} ${esc(UM[l.um] || l.um)} · ${fmtKg(l.qta_kg)} kg${postazione() === 'SPEDIZIONI' && testoMedia(l) ? '<br><span class="dim">' + testoMedia(l) + '</span>' : ''}</span></div>`).join('');
   SUCCESS_FISSO = !!fisso;
   const s = $('success'); s.classList.remove('show'); s.classList.toggle('fisso', SUCCESS_FISSO); void s.offsetWidth; s.classList.add('show');
   clearTimeout(successT); if (!SUCCESS_FISSO) successT = setTimeout(chiudiSuccesso, 11000);
@@ -1077,7 +1084,11 @@ function adattaSuccesso(n){                  // 5 lotti o più: si rimpicciolisc
 }
 window.addEventListener('resize', () => { if ($('success').classList.contains('show')) adattaSuccesso($('success-list').children.length); });
 function chiudiSuccesso(){ clearTimeout(successT); $('success').classList.remove('show'); }
-$('success-ok').addEventListener('click', chiudiSuccesso);
+$('success-ok').addEventListener('click', () => {
+  const l = SUCCESSO_STAMPA; SUCCESSO_STAMPA = null;
+  chiudiSuccesso();
+  if (l && l.length) stampaConferma(l);          // solo Spedizioni: stampa il foglio di conferma premendo OK
+});
 $('success').addEventListener('click', e => { if (e.target.id === 'success' && !SUCCESS_FISSO) chiudiSuccesso(); });
 
 function openModal(html, small){
@@ -2135,11 +2146,12 @@ async function salvaCarico(lista, previsto, dec){
     if (res.length === 1) {
       successo({
         titolo: 'Lotto registrato correttamente', grande: r.lotto_trentin, fisso: true, righe: null,
-        dettaglio: (tr ? 'Fornitore TRENTIN: registrato con il lotto del fornitore (nessun lotto interno)' : `${r.fornitore} · ${r.prodotto}`) + ` · ${fmtNum(r.qta, 0)} ${UM[r.um] || r.um}${r.produzione ? ' · prod. ' + fmtMese(r.produzione) : ''}${r.matricola ? ' · matr. ' + r.matricola : ''}`,
+        dettaglio: (tr ? 'Fornitore TRENTIN: registrato con il lotto del fornitore (nessun lotto interno)' : `${r.fornitore} · ${r.prodotto}`) + ` · ${fmtNum(r.qta, 0)} ${UM[r.um] || r.um}${r.produzione ? ' · prod. ' + fmtMese(r.produzione) : ''}${r.matricola ? ' · matr. ' + r.matricola : ''}${postazione() === 'SPEDIZIONI' && testoMedia(r) ? ' · ' + testoMedia(r) : ''}`,
+        stampa: postazione() === 'SPEDIZIONI' ? res : null,
         avviso: [(!tr && previsto && previsto !== r.lotto_trentin) ? `Il lotto ${previsto} era appena stato preso dall'altro magazzino: assegnato ${r.lotto_trentin}.` : '', avvAgg].filter(Boolean).join(' ')
       });
     } else {
-      successo({ titolo: `${res.length} lotti registrati correttamente`, grande: '', fisso: true, righe: res,
+      successo({ titolo: `${res.length} lotti registrati correttamente`, grande: '', fisso: true, righe: res, stampa: postazione() === 'SPEDIZIONI' ? res : null,
         dettaglio: `${r.fornitore} · ${new Set(res.map(x => x.prodotto)).size > 1 ? 'prodotti diversi' : r.prodotto} · DDT ${r.ddt || '—'}`, avviso: avvAgg });
     }
     resetLottoForm('c'); segnaEsiti();
@@ -2998,6 +3010,27 @@ function stampa(html, orient){
   $('page-style').textContent = `@page{size:A4 ${orient};margin:9mm}`;
   document.body.classList.add('is-printing');
   setTimeout(() => window.print(), 60);
+}
+function stampaConferma(lotti){
+  const r = lotti[0], ora = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const riga = (k, v) => v === '' || v === null || v === undefined ? '' : `<tr><th>${k}</th><td>${v}</td></tr>`;
+  const testa = `<div class="p-head"><span class="p-logo">${LOGO_IMG}</span><b class="p-title">CONFERMA REGISTRAZIONE LOTTO</b><span class="mod">Mod. 11-P</span></div>`;
+  let corpo;
+  if (lotti.length === 1) {
+    corpo = `<div class="pc-big">${esc(r.lotto_trentin)}</div>
+      <table class="pc-tab">
+        ${riga('Data arrivo', fmtData(r.data_arrivo))}${riga('Fornitore', esc(r.fornitore))}${riga('Prodotto', esc(r.prodotto))}
+        ${riga('Nr. DDT / CMR', esc(r.ddt || ''))}${riga('Matricola', esc(r.matricola || ''))}${riga('Mese/anno produzione', r.produzione ? esc(fmtMese(r.produzione)) : '')}
+        ${riga('Nr. lotto fornitore', esc(r.lotto_fornitore || ''))}${riga('Quantità', fmtNum(r.qta, 0) + ' ' + esc(UM[r.um] || r.um))}${riga('Peso totale', fmtKg(r.qta_kg) + ' kg')}
+        ${riga('Media peso forme', mediaLotto(r) === null ? '' : fmtIT(mediaLotto(r), 2, 2) + ' kg')}${riga('Temperatura prodotto', r.temp === null || r.temp === undefined ? '' : fmtNum(r.temp, 1) + ' °C')}${riga('Addetto', esc(r.addetto || ''))}
+      </table>`;
+  } else {
+    corpo = `<table class="pc-tab pc-meta">${riga('Data arrivo', fmtData(r.data_arrivo))}${riga('Fornitore', esc(r.fornitore))}${riga('Nr. DDT / CMR', esc(r.ddt || ''))}${riga('Addetto', esc(r.addetto || ''))}</table>
+      <table class="pc-multi"><thead><tr><th>Lotto</th><th>Prodotto</th><th>Matricola</th><th>Produzione</th><th>Lotto fornitore</th><th>Quantità</th><th>Kg</th><th>Media peso</th></tr></thead><tbody>
+      ${lotti.map(l => `<tr><td class="pc-lot">${esc(l.lotto_trentin)}</td><td>${esc(l.prodotto)}</td><td>${esc(l.matricola || '')}</td><td>${l.produzione ? esc(fmtMese(l.produzione)) : ''}</td><td>${esc(l.lotto_fornitore || '')}</td><td class="r">${fmtNum(l.qta, 0)} ${esc(UM[l.um] || l.um)}</td><td class="r">${fmtKg(l.qta_kg)}</td><td class="r">${mediaLotto(l) === null ? '' : fmtIT(mediaLotto(l), 2, 2) + ' kg'}</td></tr>`).join('')}
+      </tbody></table>`;
+  }
+  stampa(testa + corpo + `<div class="p-foot"><span>Registrato dalla Spedizioni</span><span>stampato il ${fmtData(oggiISO())} alle ${ora}</span></div>`, 'portrait');
 }
 window.addEventListener('afterprint', () => { document.body.classList.remove('is-printing'); $('print-area').innerHTML = ''; });
 
