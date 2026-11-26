@@ -984,7 +984,8 @@ function regolaDi(prodotto){
 // lotto fornitore: sempre per TRENTIN; per i prodotti in elenco decide la casella; per gli altri è obbligatorio solo in Spedizioni
 function lfObbligatorio(forn, prod){ if (isTrentin(forn)) return true; const r = regolaDi(prod); return r ? !!r.lf_obbl : postazione() === 'SPEDIZIONI'; }
 function erroreLf(forn){ return isTrentin(forn) ? 'Fornitore TRENTIN: indica il lotto del fornitore.' : 'Per questo prodotto indica il lotto del fornitore.'; }
-function aggiornaNote(){ const h = postazione() !== 'STAGIONATURA'; document.querySelectorAll('#c-notebox, .prod-extra .notebox, #i-notebox, #n-notebox').forEach(b => { b.hidden = h; }); }
+function aggiornaBancali(){ const h = postazione() !== 'SPEDIZIONI'; document.querySelectorAll('#c-fields .banc, .prod-extra .banc').forEach(b => { b.hidden = h; }); }
+function aggiornaNote(){ aggiornaBancali(); const h = postazione() !== 'STAGIONATURA'; document.querySelectorAll('#c-notebox, .prod-extra .notebox, #i-notebox, #n-notebox').forEach(b => { b.hidden = h; }); }
 // matricola: obbligatoria solo in Stagionatura, tranne per sbiancato, gran bon, retinato, formaggio duro
 const MAT_ESENTI = /SBIANCATO|GRAN BON|GRANBON|RETINATO|FORMAGGIO DURO/i;
 // matricola Grana Padano: provincia (2 lettere) + spazio + numero, es. CR 101
@@ -1036,6 +1037,8 @@ function segnaMancanti(){
     });
   });
 }
+document.addEventListener('input', ev => { const m = ev.target && /^(.+)-(fpb|nb)$/.exec(ev.target.id || ''); if (m) { ricalcolaBancali(m[1]); aggiornaMedia(); } });
+document.addEventListener('change', ev => { const m = ev.target && /^(.+)-um$/.exec(ev.target.id || ''); if (m) ricalcolaBancali(m[1]); });
 document.addEventListener('input', ev => { if (ev.target && /-(fornitore|prodotto)$/.test(ev.target.id || '')) aggiornaLfReq(); else segnaMancanti(); });
 document.addEventListener('change', () => segnaMancanti());
 // Le registrazioni si confermano solo cliccando con il mouse sul pulsante: l'Invio nei campi non invia nulla
@@ -1056,11 +1059,14 @@ function toast(msg, err){
 }
 
 let successT;
-let SUCCESSO_STAMPA = null;
-const mediaLotto = l => (l && l.um === 'f' && Number(l.qta) > 0 && Number(l.qta_kg) > 0) ? Number(l.qta_kg) / Number(l.qta) : null;
+const mediaLotto = l => {                  // con i dati dei bancali: (kg ÷ bancali) ÷ forme per bancale; altrimenti kg ÷ forme
+  if (!l || Number(l.qta_kg) <= 0) return null;
+  if (l._nb > 0 && l._fpb > 0) return Number(l.qta_kg) / l._nb / l._fpb;
+  return (l.um === 'f' && Number(l.qta) > 0) ? Number(l.qta_kg) / Number(l.qta) : null;
+};
 const testoMedia = l => { const m = mediaLotto(l); return m === null ? '' : `media peso ${fmtIT(m, 2, 2)} kg`; };
 function successo({ titolo, grande, dettaglio, avviso, righe, fisso, stampa }){
-  SUCCESSO_STAMPA = stampa || null;
+  if (stampa && stampa.length) setTimeout(() => stampaConferma(stampa), 400);   // solo Spedizioni: il foglio parte appena il lotto è registrato
   $('success-title').textContent = titolo;
   $('success-big').textContent = grande || '';
   $('success-detail').textContent = dettaglio || '';
@@ -1085,11 +1091,7 @@ function adattaSuccesso(n){                  // 5 lotti o più: si rimpicciolisc
 }
 window.addEventListener('resize', () => { if ($('success').classList.contains('show')) adattaSuccesso($('success-list').children.length); });
 function chiudiSuccesso(){ clearTimeout(successT); $('success').classList.remove('show'); }
-$('success-ok').addEventListener('click', () => {
-  const l = SUCCESSO_STAMPA; SUCCESSO_STAMPA = null;
-  chiudiSuccesso();
-  if (l && l.length) stampaConferma(l);          // solo Spedizioni: stampa il foglio di conferma premendo OK
-});
+$('success-ok').addEventListener('click', chiudiSuccesso);
 $('success').addEventListener('click', e => { if (e.target.id === 'success' && !SUCCESS_FISSO) chiudiSuccesso(); });
 
 function openModal(html, small){
@@ -1199,6 +1201,7 @@ function lottoFields(p, opts = {}){
     <div><label>Scadenza / TMC${scadReq(p)}</label><input class="dt-in" id="${p}-scad" placeholder="gg-mm-aaaa" autocomplete="off"><div class="field-err" id="${p}-scad-err" hidden></div></div>
     <div><label>${KG_LABEL}</label>${kgInput(p + '-kg')}</div>
     <div><label>Quantità *</label><div class="qta-um"><input id="${p}-qta" inputmode="numeric" autocomplete="off"><select id="${p}-um"><option value="f">forme (f)</option><option value="ct">cartoni (ct)</option><option value="pz">pezzi (pz)</option></select></div></div>
+    <div class="banc" hidden><label>Forme per bancale</label><input id="${p}-fpb" inputmode="numeric" autocomplete="off"></div><div class="banc" hidden><label>N. bancali</label><input id="${p}-nb" inputmode="numeric" autocomplete="off"></div>
     <div class="s4 lf-extra" id="${p}-lf-extra" hidden></div>
     <div><label>Temp. prodotto (°C) *</label><input id="${p}-temp" inputmode="decimal" autocomplete="off"></div>
     <div><label>Stato igienico mezzo e infestanti</label><select class="esito" id="${p}-igiene">${esitoOpts}</select></div>
@@ -1263,10 +1266,13 @@ function segnaEsiti(){
   document.querySelectorAll('select.esito').forEach(s => s.classList.toggle('esito-non', s.value === 'non reg'));
 }
 
+// Spedizioni: forme per bancale e n. bancali servono solo per la stampa (media peso del bancale); la quantità si scrive a mano
+function ricalcolaBancali(p){}
 function resetLottoForm(p){
   setV(p + '-data', oggiISO()); ['fornitore','ddt','prodotto','matricola','produzione','lf','scad','kg','qta','temp','note'].forEach(k => { if ($(p + '-' + k)) setV(p + '-' + k, ''); });
   setLf(p, ''); setV(p + '-um', 'f'); setV(p + '-igiene', 'reg'); setV(p + '-integrita', 'reg'); setV(p + '-addetto', '');
   if (p === 'c' && $('c-extra')) { $('c-extra').innerHTML = ''; EXTRA_N = 0; }
+  ['fpb','nb'].forEach(k => { if ($(p + '-' + k)) setV(p + '-' + k, ''); }); ricalcolaBancali(p);
   aggiornaLfReq();
 }
 function resetIngressoForm(p){
@@ -1426,6 +1432,7 @@ function addProduzione(){
       <div><label>Scadenza / TMC${scadReq(p)}</label><input class="dt-in" id="${p}-scad" placeholder="gg-mm-aaaa" autocomplete="off"><div class="field-err" id="${p}-scad-err" hidden></div></div>
       <div><label>${KG_LABEL}</label>${kgInput(p + '-kg')}</div>
       <div><label>Quantità *</label><input id="${p}-qta" inputmode="numeric" autocomplete="off"></div>
+      <div class="banc" hidden><label>Forme per bancale</label><input id="${p}-fpb" inputmode="numeric" autocomplete="off"></div><div class="banc" hidden><label>N. bancali</label><input id="${p}-nb" inputmode="numeric" autocomplete="off"></div>
       <div class="s4 lf-extra" id="${p}-lf-extra" hidden></div>
       <div class="notebox" id="${p}-notebox"${postazione() !== 'STAGIONATURA' ? ' hidden' : ''}><label>Note</label><input class="uc" id="${p}-note" maxlength="120" autocomplete="off"></div>
       <div class="mediabox"><label>Media peso prodotto</label><input id="${p}-media" readonly tabindex="-1" placeholder="kg ÷ forme"><small id="${p}-media-note"></small></div>
@@ -2112,6 +2119,8 @@ $('c-form').addEventListener('submit', async ev => {
   await salvaCarico(lista, previsto, dec);
 });
 async function salvaCarico(lista, previsto, dec){
+  const banc = prodPrefissi().map(p => ({ fpb: Number(val(p + '-fpb')) || 0, nb: Number(val(p + '-nb')) || 0 }));
+  const conBanc = res => res.map((x, i) => Object.assign({}, x, { _fpb: (banc[i] || {}).fpb, _nb: (banc[i] || {}).nb }));
   const msg = $('c-msg'), btn = $('c-submit');
   btn.disabled = true; btn.textContent = 'Salvataggio…';
   try {
@@ -2147,12 +2156,12 @@ async function salvaCarico(lista, previsto, dec){
     if (res.length === 1) {
       successo({
         titolo: 'Lotto registrato correttamente', grande: r.lotto_trentin, fisso: true, righe: null,
-        dettaglio: (tr ? 'Fornitore TRENTIN: registrato con il lotto del fornitore (nessun lotto interno)' : `${r.fornitore} · ${r.prodotto}`) + ` · ${fmtNum(r.qta, 0)} ${UM[r.um] || r.um}${r.produzione ? ' · prod. ' + fmtMese(r.produzione) : ''}${r.matricola ? ' · matr. ' + r.matricola : ''}${postazione() === 'SPEDIZIONI' && testoMedia(r) ? ' · ' + testoMedia(r) : ''}`,
-        stampa: postazione() === 'SPEDIZIONI' ? res : null,
+        dettaglio: (tr ? 'Fornitore TRENTIN: registrato con il lotto del fornitore (nessun lotto interno)' : `${r.fornitore} · ${r.prodotto}`) + ` · ${fmtNum(r.qta, 0)} ${UM[r.um] || r.um}${r.produzione ? ' · prod. ' + fmtMese(r.produzione) : ''}${r.matricola ? ' · matr. ' + r.matricola : ''}${postazione() === 'SPEDIZIONI' && banc[0] && banc[0].fpb && banc[0].nb ? ` · ${banc[0].nb} bancali da ${banc[0].fpb} forme` : ''}${postazione() === 'SPEDIZIONI' && testoMedia(r) ? ' · ' + testoMedia(r) : ''}`,
+        stampa: postazione() === 'SPEDIZIONI' ? conBanc(res) : null,
         avviso: [(!tr && previsto && previsto !== r.lotto_trentin) ? `Il lotto ${previsto} era appena stato preso dall'altro magazzino: assegnato ${r.lotto_trentin}.` : '', avvAgg].filter(Boolean).join(' ')
       });
     } else {
-      successo({ titolo: `${res.length} lotti registrati correttamente`, grande: '', fisso: true, righe: res, stampa: postazione() === 'SPEDIZIONI' ? res : null,
+      successo({ titolo: `${res.length} lotti registrati correttamente`, grande: '', fisso: true, righe: res, stampa: postazione() === 'SPEDIZIONI' ? conBanc(res) : null,
         dettaglio: `${r.fornitore} · ${new Set(res.map(x => x.prodotto)).size > 1 ? 'prodotti diversi' : r.prodotto} · DDT ${r.ddt || '—'}`, avviso: avvAgg });
     }
     resetLottoForm('c'); segnaEsiti();
@@ -3023,12 +3032,12 @@ function stampaConferma(lotti){
         ${riga('Data arrivo', fmtData(r.data_arrivo))}${riga('Fornitore', esc(r.fornitore))}${riga('Prodotto', esc(r.prodotto))}
         ${riga('Nr. DDT / CMR', esc(r.ddt || ''))}${riga('Matricola', esc(r.matricola || ''))}${riga('Mese/anno produzione', r.produzione ? esc(fmtMese(r.produzione)) : '')}
         ${riga('Nr. lotto fornitore', esc(r.lotto_fornitore || ''))}${riga('Quantità', fmtNum(r.qta, 0) + ' ' + esc(UM[r.um] || r.um), true)}${riga('Peso totale', fmtKg(r.qta_kg) + ' kg', true)}
-        ${riga('Media peso forme', mediaLotto(r) === null ? '' : fmtIT(mediaLotto(r), 2, 2) + ' kg', true)}${riga('Temperatura prodotto', r.temp === null || r.temp === undefined ? '' : fmtNum(r.temp, 1) + ' °C')}${riga('Addetto', esc(r.addetto || ''))}
+        ${riga('Bancali', r._nb && r._fpb ? `${r._nb} bancali da ${r._fpb} forme` : '', true)}${riga('Peso per bancale', r._nb && r._fpb ? fmtIT(Number(r.qta_kg) / r._nb, 2, 2) + ' kg' : '', true)}${riga('Media peso forme', mediaLotto(r) === null ? '' : fmtIT(mediaLotto(r), 2, 2) + ' kg', true)}${riga('Temperatura prodotto', r.temp === null || r.temp === undefined ? '' : fmtNum(r.temp, 1) + ' °C')}${riga('Addetto', esc(r.addetto || ''))}
       </table>`;
   } else {
     corpo = `<table class="pc-tab pc-meta">${riga('Data arrivo', fmtData(r.data_arrivo))}${riga('Fornitore', esc(r.fornitore))}${riga('Nr. DDT / CMR', esc(r.ddt || ''))}${riga('Addetto', esc(r.addetto || ''))}</table>
-      <table class="pc-multi"><thead><tr><th>Lotto</th><th>Prodotto</th><th>Matricola</th><th>Produzione</th><th>Lotto fornitore</th><th>Quantità</th><th>Kg</th><th>Media peso</th></tr></thead><tbody>
-      ${lotti.map(l => `<tr><td class="pc-lot">${esc(l.lotto_trentin)}</td><td>${esc(l.prodotto)}</td><td>${esc(l.matricola || '')}</td><td>${l.produzione ? esc(fmtMese(l.produzione)) : ''}</td><td>${esc(l.lotto_fornitore || '')}</td><td class="r pc-ev">${fmtNum(l.qta, 0)} ${esc(UM[l.um] || l.um)}</td><td class="r pc-ev">${fmtKg(l.qta_kg)}</td><td class="r pc-ev">${mediaLotto(l) === null ? '' : fmtIT(mediaLotto(l), 2, 2) + ' kg'}</td></tr>`).join('')}
+      <table class="pc-multi"><thead><tr><th>Lotto</th><th>Prodotto</th><th>Matricola</th><th>Produzione</th><th>Lotto fornitore</th><th>Bancali</th><th>Quantità</th><th>Kg</th><th>Media peso</th></tr></thead><tbody>
+      ${lotti.map(l => `<tr><td class="pc-lot">${esc(l.lotto_trentin)}</td><td>${esc(l.prodotto)}</td><td>${esc(l.matricola || '')}</td><td>${l.produzione ? esc(fmtMese(l.produzione)) : ''}</td><td>${esc(l.lotto_fornitore || '')}</td><td class="r pc-ev">${l._nb && l._fpb ? l._nb + ' × ' + l._fpb : ''}</td><td class="r pc-ev">${fmtNum(l.qta, 0)} ${esc(UM[l.um] || l.um)}</td><td class="r pc-ev">${fmtKg(l.qta_kg)}</td><td class="r pc-ev">${mediaLotto(l) === null ? '' : fmtIT(mediaLotto(l), 2, 2) + ' kg'}</td></tr>`).join('')}
       </tbody></table>`;
   }
   stampa(testa + corpo + `<div class="p-foot"><span>Registrato dalla Spedizioni</span><span>stampato il ${fmtData(oggiISO())} alle ${ora}</span></div>`, 'portrait');
