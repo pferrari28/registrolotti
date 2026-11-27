@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prova stampa diretta</title>
+<style>
+body{font-family:Arial,sans-serif;max-width:560px;margin:30px auto;padding:0 16px}
+button{display:block;width:100%;padding:14px;margin:10px 0;font-size:16px;cursor:pointer}
+#foglio{display:none}
+@media print{ body > *:not(#foglio){display:none !important} #foglio{display:block !important;font-size:40pt;text-align:center;margin-top:60mm} }
+</style></head><body>
+<h2>Prova stampa diretta</h2>
+<p>Premi i pulsanti uno alla volta. Per ognuno, guarda se il foglio esce subito dalla stampante o se compare la finestra di Chrome, e annotalo.</p>
+<button id="b1">1 · Stampa subito (window.print)</button>
+<button id="b2">2 · Stampa dopo una pausa (come il registro)</button>
+<button id="b3">3 · Stampa con formato A4 verticale</button>
+<button id="b4">4 · Stampa da un riquadro nascosto (iframe)</button>
+<div id="foglio"></div>
+<style id="ps"></style>
+<script>
+const f = document.getElementById('foglio'), ps = document.getElementById('ps');
+function prepara(n, pagina){ f.textContent = 'PROVA ' + n; ps.textContent = pagina || ''; }
+b1.onclick = () => { prepara(1); window.print(); };
+b2.onclick = () => { prepara(2); setTimeout(() => window.print(), 60); };
+b3.onclick = () => { prepara(3, '@page{size:A4 portrait;margin:9mm}'); setTimeout(() => window.print(), 60); };
+b4.onclick = () => {
+  const fr = document.createElement('iframe'); fr.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
+  document.body.appendChild(fr);
+  fr.contentDocument.write('<body style="font-family:Arial;font-size:40pt;text-align:center;margin-top:60mm">PROVA 4</body>'); fr.contentDocument.close();
+  setTimeout(() => { fr.contentWindow.focus(); fr.contentWindow.print(); setTimeout(() => fr.remove(), 3000); }, 100);
+};
+</script></body></html>
