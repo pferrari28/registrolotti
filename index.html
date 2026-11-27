@@ -383,6 +383,9 @@ body.wide #view-registro .page-title{margin-bottom:10px;}
   #print-area .p-foot{margin-top:6px;font-size:7.5pt;color:#444;display:flex;justify-content:space-between;}
   #print-area .p-meta{margin:6px 0;font-size:8.5pt;}
   #print-area .pc-ev{background:#FFEB3B !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  #print-area .pc-blk{page-break-inside:avoid;break-inside:avoid;margin:7mm 0 9mm;}
+  #print-area .pc-lotto{font-size:32pt;font-weight:800;letter-spacing:.03em;margin:0 0 2.5mm;}
+  #print-area .pc-2c{width:100%;font-size:11pt;table-layout:fixed;} #print-area .pc-2c th{width:18%;text-align:left;background:#EDEDED;font-size:9.5pt;padding:5px 7px;} #print-area .pc-2c td{width:32%;padding:5px 7px;font-weight:700;overflow-wrap:anywhere;} #print-area .pc-2c .vuoto{background:#fff;border-color:#fff;}
   #print-area .pc-big{font-size:68pt;font-weight:800;text-align:center;letter-spacing:.03em;margin:30mm 0 18mm;}
   #print-area .pc-tab{width:100%;font-size:14pt;} #print-area .pc-tab th{width:38%;text-align:left;background:#EDEDED;font-size:12pt;padding:7px 10px;} #print-area .pc-tab td{padding:7px 10px;font-weight:700;}
   #print-area .pc-meta{margin:14mm 0 8mm;} #print-area .pc-multi{font-size:11pt;} #print-area .pc-multi td.pc-lot{font-size:15pt;font-weight:800;} #print-area .pc-multi td.r{text-align:right;}
@@ -3035,10 +3038,20 @@ function stampaConferma(lotti){
         ${riga('Bancali', r._nb && r._fpb ? `${r._nb} bancali da ${r._fpb} forme` : '', true)}${riga('Peso per bancale', r._nb && r._fpb ? fmtIT(Number(r.qta_kg) / r._nb, 2, 2) + ' kg' : '', true)}${riga('Media peso forme', mediaLotto(r) === null ? '' : fmtIT(mediaLotto(r), 2, 2) + ' kg', true)}${riga('Temperatura prodotto', r.temp === null || r.temp === undefined ? '' : fmtNum(r.temp, 1) + ' °C')}${riga('Addetto', esc(r.addetto || ''))}
       </table>`;
   } else {
-    corpo = `<table class="pc-tab pc-meta">${riga('Data arrivo', fmtData(r.data_arrivo))}${riga('Fornitore', esc(r.fornitore))}${riga('Nr. DDT / CMR', esc(r.ddt || ''))}${riga('Addetto', esc(r.addetto || ''))}</table>
-      <table class="pc-multi"><thead><tr><th>Lotto</th><th>Prodotto</th><th>Matricola</th><th>Produzione</th><th>Lotto fornitore</th><th>Bancali</th><th>Quantità</th><th>Kg</th><th>Media peso</th></tr></thead><tbody>
-      ${lotti.map(l => `<tr><td class="pc-lot">${esc(l.lotto_trentin)}</td><td>${esc(l.prodotto)}</td><td>${esc(l.matricola || '')}</td><td>${l.produzione ? esc(fmtMese(l.produzione)) : ''}</td><td>${esc(l.lotto_fornitore || '')}</td><td class="r pc-ev">${l._nb && l._fpb ? l._nb + ' × ' + l._fpb : ''}</td><td class="r pc-ev">${fmtNum(l.qta, 0)} ${esc(UM[l.um] || l.um)}</td><td class="r pc-ev">${fmtKg(l.qta_kg)}</td><td class="r pc-ev">${mediaLotto(l) === null ? '' : fmtIT(mediaLotto(l), 2, 2) + ' kg'}</td></tr>`).join('')}
-      </tbody></table>`;
+    // più lotti: un blocco per lotto, con i dati su due colonne affiancate (identificazione a sinistra, quantità a destra)
+    const cella = c => c ? `<th>${c[0]}</th><td${c[2] ? ' class="pc-ev"' : ''}>${c[1]}</td>` : '<th class="vuoto"></th><td class="vuoto"></td>';
+    const ok = c => c[1] !== '' && c[1] !== null && c[1] !== undefined;
+    corpo = lotti.map(l => {
+      const bn = l._nb && l._fpb, med = mediaLotto(l);
+      const sx = [['Data arrivo', fmtData(l.data_arrivo)], ['Fornitore', esc(l.fornitore)], ['Prodotto', esc(l.prodotto)], ['Nr. DDT / CMR', esc(l.ddt || '')],
+        ['Matricola', esc(l.matricola || '')], ['Mese/anno produzione', l.produzione ? esc(fmtMese(l.produzione)) : ''], ['Nr. lotto fornitore', esc(l.lotto_fornitore || '')]].filter(ok);
+      const dx = [['Quantità', fmtNum(l.qta, 0) + ' ' + esc(UM[l.um] || l.um), true], ['Peso totale', fmtKg(l.qta_kg) + ' kg', true],
+        ['Bancali', bn ? `${l._nb} bancali da ${l._fpb} forme` : '', true], ['Peso per bancale', bn ? fmtIT(Number(l.qta_kg) / l._nb, 2, 2) + ' kg' : '', true],
+        ['Media peso forme', med === null ? '' : fmtIT(med, 2, 2) + ' kg', true], ['Temperatura prodotto', l.temp === null || l.temp === undefined ? '' : fmtNum(l.temp, 1) + ' °C'], ['Addetto', esc(l.addetto || '')]].filter(ok);
+      let righe = '';
+      for (let i = 0; i < Math.max(sx.length, dx.length); i++) righe += `<tr>${cella(sx[i])}${cella(dx[i])}</tr>`;
+      return `<div class="pc-blk"><div class="pc-lotto">${esc(l.lotto_trentin)}</div><table class="pc-2c">${righe}</table></div>`;
+    }).join('');
   }
   stampa(testa + corpo + `<div class="p-foot"><span>Registrato dalla Spedizioni</span><span>stampato il ${fmtData(oggiISO())} alle ${ora}</span></div>`, 'portrait');
 }
