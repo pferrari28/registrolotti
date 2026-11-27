@@ -985,7 +985,10 @@ function regolaDi(prodotto){
   return best;
 }
 // lotto fornitore: sempre per TRENTIN; per i prodotti in elenco decide la casella; per gli altri è obbligatorio solo in Spedizioni
-function lfObbligatorio(forn, prod){ if (isTrentin(forn)) return true; const r = regolaDi(prod); return r ? !!r.lf_obbl : postazione() === 'SPEDIZIONI'; }
+// Formaggi di stagionatura: anche se li registra la Spedizioni (capita molto raramente) valgono le regole della Stagionatura
+const TIPI_STAGIONATURA = /REGGIANO|BIOLOGICO|MEZZANO|PADANO|SBIANCATO|RETINATO|GRAN ?BON/i;
+const comeStagionatura = prod => postazione() === 'SPEDIZIONI' && TIPI_STAGIONATURA.test(prod || '');
+function lfObbligatorio(forn, prod){ if (isTrentin(forn)) return true; const r = regolaDi(prod); return r ? !!r.lf_obbl : (postazione() === 'SPEDIZIONI' && !comeStagionatura(prod)); }
 function erroreLf(forn){ return isTrentin(forn) ? 'Fornitore TRENTIN: indica il lotto del fornitore.' : 'Per questo prodotto indica il lotto del fornitore.'; }
 function aggiornaBancali(){ const h = postazione() !== 'SPEDIZIONI'; document.querySelectorAll('#c-fields .banc, .prod-extra .banc').forEach(b => { b.hidden = h; }); }
 function aggiornaNote(){ aggiornaBancali(); const h = postazione() !== 'STAGIONATURA'; document.querySelectorAll('#c-notebox, .prod-extra .notebox, #i-notebox, #n-notebox').forEach(b => { b.hidden = h; }); }
